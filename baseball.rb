@@ -7,16 +7,26 @@
 #in order to get this to work you'll need a mysql database instance installed with a database called baseball_data and a user called baseball with full access to baseball database 
 ##CREATE DATABASE baseball_data 
 ##GRANT ALL PRIVILEGES ON *.* TO 'baseball'@'localhost' IDENTIFIED BY 'baseballrocks';
-##CREATE TABLE games (gid VARCHAR(100), home_team_name VARCHAR(100), away_team_name VARCHAR(100), home_team_score INT, away_team_score INT, gdate DATE);
+##CREATE TABLE games (gid VARCHAR(100), home_team_name VARCHAR(100), away_team_name VARCHAR(100), home_team_score INT, away_team_score INT, gdate DATE, UNIQUE(gid));
 
 #the baseball database has a games table with home and away team names and run totals along with game id 
 
 require 'open-uri'
 require 'nokogiri'
+require 'mysql2'
 
 class Game 
 
 	attr_accessor :gid
+	
+	def self.parsegamestring(game_string) 
+		g_array=game_string.split("_")
+		g_hash={:year=>g_array[1], :month=>g_array[2], :day=>g_array[3]}
+		g_hash[:awayt]=g_array[4].sub("mlb","")
+		g_hash[:homet]=g_array[5].sub("mlb","")
+		g_hash[:gnum]=g_array[6]
+		g_hash 
+	end 
 
 	def self.openingday
 		puts "hello, its opening day!" 
@@ -28,6 +38,7 @@ class Game
 		url+="/month_#{gid[:month].to_s.date_with_zero}"
 		url+="/day_#{gid[:day].to_s.date_with_zero}"
 		url+="/"+self.gid_string+"/boxscore.xml"
+		puts url		
 		url
 	end 
 
@@ -45,22 +56,95 @@ class Game
 
 	def game_score 
 		score={}
-		doc = Nokogiri::HTML(open(game_url))
+		doc = Nokogiri::HTML(open(self.game_url))
 		at=doc.xpath("//linescore").attribute("away_team_runs").value 
 		ht=doc.xpath("//linescore").attribute("home_team_runs").value	
 		score[:at_runs]=at
 		score[:ht_runs]=ht
 		score
 	end 
+
+	def add_game_score 
+		#connect to db
+		client = Mysql2::Client.new(:host => "localhost", 
+					:username => "baseball", 
+					:password => "baseballrocks", 
+					:db => "baseball_data")
+		sql_syntax="INSERT INTO games (gid, home_team_name, away_team_name, home_team_score, away_team_score, gdate) VALUES ("
+		score=self.game_score 
+		sql_syntax+="'#{self.gid_string}', "
+		sql_syntax+="'#{self.gid[:homet]}', "
+		sql_syntax+="'#{self.gid[:awayt]}', "
+		sql_syntax+="#{score[:ht_runs]}, "
+		sql_syntax+="#{score[:at_runs]}, "
+		sql_syntax+="'#{self.gid[:year].to_s}"+"-"
+		sql_syntax+="#{self.gid[:month].to_s.date_with_zero}"+"-"
+		sql_syntax+="#{self.gid[:day].to_s.date_with_zero}'"
+		sql_syntax+=");"
+		sql_syntax
+		#delete game from db if exists 
+		client.query("DELETE FROM games WHERE gid='#{self.gid_string}';")
+		client.query(sql_syntax)
+		
+	end 
+end 
+
+class Season
+	attr_accessor :year
+	def savescores 
+		base_url="https://gd2.mlb.com/components/game/mlb/year_#{self.year.to_s}"
+		for month in 1..12 do 
+			#pull month data 
+			url=base_url+"/month_"+month.to_s.date_with_zero+"/"
+			#loop through all days 
+			month_doc=Nokogiri::HTML(open(url))
+			month_doc.xpath("//a").each do |a|
+				#check whether link is to a day 
+				if a.attribute("href").value =~ /day/
+					day_url=url+a.attribute("href").value.sub("/","")
+					#pull out games for each day 
+					day_doc=Nokogiri::HTML(open(day_url))
+					day_doc.xpath("//a").each do |day_a|
+						if day_a.attribute("href").value =~ /gid/
+							#check whether game has a boxscore 
+							game_path=url+day_a.attribute("href").value
+							game_doc=Nokogiri::HTML(open(game_path))
+							game_doc.xpath("//a").each do |game_a|
+								if game_a.attribute("href").value =~ /boxscore/
+									box_path=game_path+"boxscore.xml"
+									gid_string=day_a.attribute("href").value.split("/").last
+									#puts gid_string
+									#confirm both teams are MLB teams 
+									if gid_string.split("_")[4] =~ /mlb/ and gid_string.split("_")[5] =~ /mlb/
+										current_game=Game.new
+										current_game.gid=Game.parsegamestring(gid_string)
+										current_game.add_game_score
+										puts  current_game.gid
+									end 
+								end 
+							end 				
+						end 
+					end 
+				end  
+			end 
+		
+		end 		
+	end  
 end 
 
 class String 
 	def date_with_zero 
-		if self.to_i<10 then "0"+self
+		if self.to_i<10 then "0"+self.to_i.to_s
 		else self
 		end  	
 	end 
 end 
+
+#https://gd2.mlb.com/components/game/mlb/year_2010/month_03/day_02/gid_2010_03_02_atlmlb_nynmlb_1/boxscore.xml
+
+#https://gd2.mlb.com/components/game/mlb/year_2010/month_03/day_02/gid_2010_03_02_flsbbcmlb_detmlb_1/boxscore.xml
+
+#https://gd2.mlb.com/components/game/mlb/year_2010/month_03/day_02/gid_2010_03_02_flsbbc_detmlb_1/
 
 #notes 
 
