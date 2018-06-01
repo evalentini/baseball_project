@@ -86,7 +86,8 @@ class Game
 					deletesyntax="DELETE FROM hitters WHERE gid='#{self.gid_string}' AND id=#{batter.attribute('id').value};"
 					insertsyntax = "INSERT INTO hitters (gid, id, name, atbats, hits, walks, hbp, sacrifice, homeruns, team) VALUES ("
 					insertsyntax+="'#{self.gid_string}', #{batter.attribute("id").value}, "
-					insertsyntax+="'#{batter.attribute('name_display_first_last')}', "
+					batter_name=batter.attribute('name_display_first_last').value.gsub("'", "\\\\'")				
+					insertsyntax+="'#{batter_name}', "
 					insertsyntax+="#{batter.attribute('ab').value}, "
 					insertsyntax+="#{batter.attribute('h').value}, "
 					insertsyntax+="#{batter.attribute('bb').value}, "
@@ -96,6 +97,8 @@ class Game
 					batter_team=self.gid[:awayt]
 					batter_team=self.gid[:homet] if teambatting.attribute('team_flag').value=='home'
 					insertsyntax+="'#{batter_team}');"
+
+					puts insertsyntax
 
 					client.query(deletesyntax)
 					client.query(insertsyntax)
@@ -112,8 +115,22 @@ class Game
 				hitter_pa_url=self.game_url.sub('boxscore.xml', hitter.attribute('href').value)	
 				#pull PA data for hitter
 				pa_data=Nokogiri::HTML(open(hitter_pa_url))
+				#delete all records for given player and given game 
+				hitter_id=pa_data.xpath('//player').attribute('id').value
+				hitter_name=pa_data.xpath('//player').attribute('first_name').value.gsub("'","\\\\'") + " " 
+				hitter_name+=pa_data.xpath('//player').attribute('last_name').value.gsub("'","\\\\'")
+				deletesyntax="DELETE FROM plateappearances WHERE gid='#{self.gid_string}' AND "
+				deletesyntax+="hitter_id=#{pa_data.xpath('//player').attribute('id').value};"
+				client.query(deletesyntax)
+				ab_counter=0
 				pa_data.xpath('//ab').each do |ab|
-					puts ab.attribute("event").value				
+				ab_counter+=1
+				insertsyntax="INSERT INTO plateappearances (gid, hitter_id, hitter_name, game_ab, inning, event) "
+				insertsyntax+="VALUES ("
+				insertsyntax+="'#{self.gid_string}', #{hitter_id}, '#{hitter_name}', #{ab_counter}, "
+				insertsyntax+="#{ab.attribute('inning').value}, '#{ab.attribute('event').value}');"
+				puts insertsyntax				
+				client.query(insertsyntax)				
 				end 
 			end 
 		end 
@@ -151,7 +168,7 @@ class Season
 	
 	def savescores 
 		base_url="https://gd2.mlb.com/components/game/mlb/year_#{self.year.to_s}"
-		for month in 9..12 do 
+		for month in 2..12 do 
 			#pull month data 
 			url=base_url+"/month_"+month.to_s.date_with_zero+"/"
 			#loop through all days 
@@ -177,6 +194,7 @@ class Season
 										current_game=Game.new
 										current_game.gid=Game.parsegamestring(gid_string)
 										current_game.add_game_score
+										current_game.batting_lines(Nokogiri::HTML(open(current_game.game_url)))
 										puts  current_game.gid
 									end 
 								end 
