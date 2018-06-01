@@ -2,7 +2,12 @@
 #questions for Phil: 
 ##1.) How can I create a local variable in the linux terminal that I can use to save my password? Can't even remember the terminology for this. 
 
-##2.) How could I write a script to automatically create the local database and correct tables? 
+##2.) How could I write a script to automatically create the local database and correct tables?
+
+
+#create table hitters (gid varchar(100), id INT, name VARCHAR(200), atbats INT, hits INT, walks INT, hbp INT, sacrifice INT, homeruns INT, slugging float, team VARCHAR(100)) 
+
+#create table plateappearances (gid varchar(100), hitter_id INT, hitter_name VARCHAR(100), game_ab INT, inning INT, event VARCHAR(200), UNIQUE (gid, hitter_id,game_ab));
 
 #in order to get this to work you'll need a mysql database instance installed with a database called baseball_data and a user called baseball with full access to baseball database 
 ##CREATE DATABASE baseball_data 
@@ -14,6 +19,7 @@
 require 'open-uri'
 require 'nokogiri'
 require 'mysql2'
+#load 'player.rb'
 
 class Game 
 
@@ -55,6 +61,8 @@ class Game
 	end 
 
 	def game_score 
+
+		#record score 
 		score={}
 		doc = Nokogiri::HTML(open(self.game_url))
 		at=doc.xpath("//linescore").attribute("away_team_runs").value 
@@ -62,6 +70,55 @@ class Game
 		score[:at_runs]=at
 		score[:ht_runs]=ht
 		score
+	
+	end  
+
+	def batting_lines(doc)
+		#connect to db
+		client = Mysql2::Client.new(:host => "localhost", 
+					:username => "baseball", 
+					:password => "baseballrocks", 
+					:db => "baseball_data")
+
+		doc.xpath("//batting").each do |teambatting|
+				teambatting.xpath('.//batter').each do |batter|
+					#delete records if they already exist (at most 1 record per batter)
+					deletesyntax="DELETE FROM hitters WHERE gid='#{self.gid_string}' AND id=#{batter.attribute('id').value};"
+					insertsyntax = "INSERT INTO hitters (gid, id, name, atbats, hits, walks, hbp, sacrifice, homeruns, team) VALUES ("
+					insertsyntax+="'#{self.gid_string}', #{batter.attribute("id").value}, "
+					insertsyntax+="'#{batter.attribute('name_display_first_last')}', "
+					insertsyntax+="#{batter.attribute('ab').value}, "
+					insertsyntax+="#{batter.attribute('h').value}, "
+					insertsyntax+="#{batter.attribute('bb').value}, "
+					insertsyntax+="#{batter.attribute('hbp').value}, "
+					insertsyntax+="#{batter.attribute('sac').value}, "
+					insertsyntax+="#{batter.attribute('hr').value}, "
+					batter_team=self.gid[:awayt]
+					batter_team=self.gid[:homet] if teambatting.attribute('team_flag').value=='home'
+					insertsyntax+="'#{batter_team}');"
+
+					client.query(deletesyntax)
+					client.query(insertsyntax)
+				end 
+		end
+
+		#add plate appearance information 
+		#get url for hitters 
+		hitter_folder_url=self.game_url.sub('boxscore.xml', 'batters')
+		puts hitter_folder_url
+		hitter_list=Nokogiri::HTML(open(hitter_folder_url))
+		hitter_list.xpath("//a").each do |hitter|
+			if hitter.attribute('href').value =~ /batters\/[0-9]+\.xml/
+				hitter_pa_url=self.game_url.sub('boxscore.xml', hitter.attribute('href').value)	
+				#pull PA data for hitter
+				pa_data=Nokogiri::HTML(open(hitter_pa_url))
+				pa_data.xpath('//ab').each do |ab|
+					puts ab.attribute("event").value				
+				end 
+			end 
+		end 
+		
+  
 	end 
 
 	def add_game_score 
@@ -91,9 +148,10 @@ end
 
 class Season
 	attr_accessor :year
+	
 	def savescores 
 		base_url="https://gd2.mlb.com/components/game/mlb/year_#{self.year.to_s}"
-		for month in 1..12 do 
+		for month in 9..12 do 
 			#pull month data 
 			url=base_url+"/month_"+month.to_s.date_with_zero+"/"
 			#loop through all days 
@@ -127,9 +185,42 @@ class Season
 					end 
 				end  
 			end 
-		
 		end 		
-	end  
+	end
+
+	def winpct(team_name) 
+		result={}
+		client=self.dbconnect
+		winquery="select count(*) as wincount from games where season=#{self.year} and partofseason='reg'and ((home_team_name='#{team_name}' and home_team_score > away_team_score) or (away_team_name='#{team_name}' and away_team_score > home_team_score));"
+		
+		wins=client.query(winquery).first["wincount"]
+		losses=162-wins
+		result[:wins]=wins
+		result[:losses]=losses
+		return wins.to_f / (wins.to_f + losses.to_f) 
+	end   
+
+	def standings(division)
+		client=self.dbconnect
+		team_query="SELECT name from teams where division='#{division}';"
+		teams=client.query(team_query)
+		result=[]
+		teams.each do |team|
+			result.push({:name => team["name"], :winpct => self.winpct(team["name"]), :wins => self.winpct(team["name"])*162})
+		end 
+		puts result 
+		
+	end 
+
+	def dbconnect
+				client = Mysql2::Client.new(:host => "localhost", 
+				:username => "baseball", 
+				:password => "baseballrocks", 
+				:db => "baseball_data")
+
+				return client 
+	end 
+
 end 
 
 class String 
