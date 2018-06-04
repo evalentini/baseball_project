@@ -165,7 +165,94 @@ end
 
 class Season
 	attr_accessor :year
-	
+
+	def boxscorestodisc(team="nya")
+		#save all boxscore files to a disc for given season 
+		base_url="https://gd2.mlb.com/components/game/mlb/year_#{self.year.to_s}"
+		for month in 2..12 do 	
+			url=base_url+"/month_"+month.to_s.date_with_zero+"/"
+			#loop through all days 
+			month_doc=Nokogiri::HTML(open(url))
+			month_doc.xpath("//a").each do |a|
+				#check whether link is to a day 
+				if a.attribute("href").value =~ /day/
+					day_url=url+a.attribute("href").value.sub("/","")
+					#pull out games for each day 
+					day_doc=Nokogiri::HTML(open(day_url))
+					day_doc.xpath("//a").each do |day_a|
+						day_a_link=day_a.attribute("href").value 
+						if day_a_link =~ /gid/ && day_a_link =~ /#{team}mlb/
+							#check whether game has a boxscore 
+							game_path=url+day_a.attribute("href").value
+							game_doc=Nokogiri::HTML(open(game_path))
+							game_doc.xpath("//a").each do |game_a|
+								if game_a.attribute("href").value =~ /boxscore\.xml/
+									box_path=game_path+"boxscore.xml"
+									gid_string=day_a.attribute("href").value.split("/").last
+									#confirm both teams are MLB teams 
+									if gid_string.split("_")[4] =~ /mlb/ and gid_string.split("_")[5] =~ /mlb/
+										current_game=Game.new
+										current_game.gid=Game.parsegamestring(gid_string)
+										current_game.batting_lines(game_doc) 
+										#game_full_url = URI.encode(URI.decode(current_game.game_url))
+										#game_full_url = URI(game_full_url)
+										#filepath="/home/evan/Desktop/A-F/baseball_game_data"
+										#filename=filepath+"/"+gid_string+"_boxscore.xml"										
+										#file=File.new(filename, "w")										
+										#download=game_full_url.open
+										#IO.copy_stream(download,file.path)
+							#			hitter_list_path=game_path+"batters/"
+							#			puts hitter_list_path
+							#			hitter_list=Nokogiri::HTML(open(hitter_list_path))
+							#			hitter_list.xpath("//a").each do |hitter|
+									#	puts hitter.attribute('href').value
+										#if hitter.attribute('href').value =~ /[0-9]+\.xml/
+									#		hitter_pa_url=game_path+"batters/"+hitter.attribute('href').value	
+											#hitter_pa_url=URI.encode(URI.decode(hitter_pa_url))
+											#hitter_pa_url=URI(hitter_pa_url)
+											#hitter_string=hitter.attribute("href").value.split("/").last
+											#filepath="/home/evan/Desktop/A-F/baseball_hitter_data"
+											#filename=filepath+"/"+gid_string+"_batter_"+hitter_string
+											#file=File.new(filename, "w")
+											#download=hitter_pa_url.open
+											#IO.copy_stream(download, file.path)
+											#pull PA data for hitter
+								#			current_game=Game.new
+									#		current_game.gid=Game.parsegamestring(gid_string)
+											
+											
+										#	pa_data=Nokogiri::HTML(open(hitter_pa_url))
+											#delete all records for given player and given game 
+											#hitter_id=pa_data.xpath('//player').attribute('id').value
+											#hitter_name=pa_data.xpath('//player').attribute('first_name').value.gsub("'","\\\\'") + " " 
+											#hitter_name+=pa_data.xpath('//player').attribute('last_name').value.gsub("'","\\\\'")
+											#deletesyntax="DELETE FROM plateappearances WHERE gid='#{current_game.gid_string}' AND "
+											#deletesyntax+="hitter_id=#{pa_data.xpath('//player').attribute('id').value};"
+											#client.query(deletesyntax)
+											#ab_counter=0
+
+											#pa_data.xpath('//ab').each do |ab|
+												#ab_counter+=1
+												#insertsyntax="INSERT INTO plateappearances (gid, hitter_id, hitter_name, game_ab, inning, event) "
+												#insertsyntax+="VALUES ("
+												#insertsyntax+="'#{current_game.gid_string}', #{hitter_id}, '#{hitter_name}', #{ab_counter}, "
+												#insertsyntax+="#{ab.attribute('inning').value}, '#{ab.attribute('event').value}');"				
+												#client.query(insertsyntax)				
+											#end  
+
+									#end 
+								end 
+							end 				
+						end 
+					end 
+				end  
+			end 
+		end 		
+	end 
+
+	end
+
+
 	def savescores 
 		base_url="https://gd2.mlb.com/components/game/mlb/year_#{self.year.to_s}"
 		for month in 2..12 do 
@@ -185,7 +272,7 @@ class Season
 							game_path=url+day_a.attribute("href").value
 							game_doc=Nokogiri::HTML(open(game_path))
 							game_doc.xpath("//a").each do |game_a|
-								if game_a.attribute("href").value =~ /boxscore/
+								if game_a.attribute("href").value =~ /boxscore\.xml/
 									box_path=game_path+"boxscore.xml"
 									gid_string=day_a.attribute("href").value.split("/").last
 									#puts gid_string
