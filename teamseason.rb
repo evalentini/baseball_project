@@ -8,6 +8,10 @@ require 'nokogiri'
 require 'mysql2'
 require 'nikkou'
 
+
+#questions for phil: 
+#1.) How can I avoid putting the code to connect to the DB in all classes? 
+
 class Teamseason
 	attr_accessor :team, :year
 	
@@ -53,10 +57,14 @@ class Teamseason
 		games.each do |game|
 			gidstring=game.split("/")[-1]
 			current_game=Game.new
-			current_game.gid=current_game.parsegamestring(gidstring)
-			current_game.add_game_score 
-			current_game.batting_lines
-			puts "added score and batting lines for game #{current_game.gid_string}"
+			begin
+				current_game.gid=current_game.parsegamestring(gidstring)
+				current_game.add_game_score 
+				#current_game.batting_lines
+				puts "added score and batting lines for game #{current_game.gid_string}"
+			rescue 
+				puts "url error" 
+			end 
 		end  
 	end
 
@@ -126,6 +134,21 @@ class Teamseason
 					:password => "baseballrocks", 
 					:db => "baseball_data")
 				client
+	end 
+
+	def self.teamList
+		["atl","bal","bos","chn","cin","cle","col","det",
+		"flo","hou","kca","lan","mil","min","nya","nyn","oak","phi","pit",
+		"sdn","sea","sfn","sln","tba","tex","tor","was"]
+	end 
+
+	def self.saveAllGames(year=2018) 
+		self.teamList.each do |team|
+			myteam=Teamseason.new
+			myteam.year=year 
+			myteam.team=team
+			myteam.save_game_info
+		end 
 	end 
 	 
 end 
