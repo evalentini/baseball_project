@@ -41,6 +41,7 @@ class Game
 
 		#record score 
 		score={}
+		puts "game url is ---#{self.game_url}---"
 		doc = Nokogiri::HTML(open(self.game_url))
 		at=doc.xpath("//linescore").attribute("away_team_runs").value 
 		ht=doc.xpath("//linescore").attribute("home_team_runs").value	

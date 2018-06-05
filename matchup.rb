@@ -1,5 +1,5 @@
 class Matchup 
-	attr_accessor :homet, :awayt, :moneyline
+	attr_accessor :homet, :awayt, :moneyline, :gid
 	def ml_to_odds
 		result={}
 		if moneyline[:h]<0 then 
@@ -49,6 +49,9 @@ class Matchup
 				current_game=Game.new 
 				awayt_name=Matchup.teamList[k.split('-')[0]]; homet_name=Matchup.teamList[k.split('-')[1]]
 				current_game.gid={:year=>gamedate.year.to_s, :month=>gamedate.month.to_s, :day => gamedate.day.to_s, :awayt=>awayt_name.to_s, :homet=>homet_name.to_s, :gnum=>1}
+				odds=v.first[1]
+				current_matchup=Matchup.new
+				current_matchup.add_matchup(current_game,odds) 
 			else 	
 			#doubleheader
 				earliest_game_time=9999999
@@ -64,13 +67,60 @@ class Matchup
 					timek==earliest_game_time_string ? gnum=1 : gnum=2
 					current_game=Game.new
 					awayt_name=Matchup.teamList[k.split('-')[0]]; homet_name=Matchup.teamList[k.split('-')[1]]
-					current_game.gid={:year=>gamedate.year.to_s, :month=>gamedate.month.to_s, :day => 				gamedate.day.to_s, :awayt=>awayt_name.to_s, :homet=>homet_name.to_s, :gnum=>gnum}
+					current_game.gid={:year=>gamedate.year.to_s, 
+														:month=>gamedate.month.to_s, :day => 				gamedate.day.to_s, 
+														:awayt=>awayt_name.to_s, :homet=>homet_name.to_s, 
+														:gnum=>gnum}
+				puts"---time key is #{timek} and time v is #{timev} and gid is #{current_game.gid_string}----"
+				current_matchup=Matchup.new
+				current_matchup.add_matchup(current_game,timev) 
 				end 
 			end 
-			delete_syntax="DELETE FROM matchups WHERE gid='#{current_game.gid_string}'"
-			
 		end 
 	end  
+
+	def self.db_connect
+				client = Mysql2::Client.new(:host => "localhost", 
+					:username => "baseball", 
+					:password => "baseballrocks", 
+					:db => "baseball_data")
+				client
+	end 
+
+	def add_matchup(current_game, odds)
+		client=Matchup.db_connect		
+		delete_syntax="DELETE FROM matchups WHERE gid='#{current_game.gid_string}';"
+		client.query(delete_syntax)
+		value_hash={:gid=>current_game.gid_string, :home_team_name=>current_game.gid[:homet], :away_team_name=>current_game.gid[:awayt]}
+		value_hash[:home_ml]=odds[:ml_home].to_i
+		value_hash[:away_ml]=odds[:ml_away].to_i
+		variables=[]
+		values=[]
+		value_hash.each do |k,v|
+			variables.push(k)		
+			values.push(v)
+		end
+		client.query("test".insert_syntax('matchups', values, variables))
+	end 
+
+	def wl_odds
+
+		current_game=Game.new
+		current_game_hash=current_game.parsegamestring(self.gid) 
+
+
+		hometeam=Teamseason.new
+		hometeam.year=2018; hometeam.team=current_game_hash[:homet]
+		hometeam_win_pct=hometeam.win_pct
+
+		awayteam=Teamseason.new 
+		awayteam.year=2018; awayteam.team=current_game_hash[:awayt]
+		awayteam_win_pct=awayteam.win_pct
+		
+		puts "--#{hometeam_win_pct} and #{awayteam_win_pct}--"
+		
+
+	end 
 
 	def self.teamList
 		tl={}
@@ -85,7 +135,7 @@ class Matchup
 			tl["Cleveland"]="cle"
 			tl["Colorado"]="col"
 			tl["Detroit"]="det"
-			tl["Miami"]="flo"; tl["Houston"]="hou"; tl["Kansas City"]="kca"; tl["L.A. Dodgers"]="lan"
+			tl["Miami"]="mia"; tl["Houston"]="hou"; tl["Kansas City"]="kca"; tl["L.A. Dodgers"]="lan"
 			tl["Milwaukee"]="mil"; tl["Minnesota"]="min"; tl["N.Y. Yankees"]="nya"; tl["N.Y. Mets"]="nyn"
 			tl["Oakland"]="oak"; tl["Philadelphia"]="phi"; tl["Pittsburgh"]="pit"; tl["San Diego"]="sdn";
 			tl["Seattle"]="sea"; tl["San Francisco"]="sfn"; tl["St. Louis"]="sln";

@@ -55,16 +55,25 @@ class Teamseason
 	def save_game_info
 		games = self.completed_games 
 		games.each do |game|
+			begin			
 			gidstring=game.split("/")[-1]
 			current_game=Game.new
-			begin
 				current_game.gid=current_game.parsegamestring(gidstring)
 				current_game.add_game_score 
 				#current_game.batting_lines
 				puts "added score and batting lines for game #{current_game.gid_string}"
-			rescue 
-				puts "url error" 
-			end 
+				#change part of season
+				od=Teamseason.openingDay(2018)[self.team]
+				puts "--#{od}--"
+				current_game_date = Date.parse("'#{current_game.gid[:day].to_s}-#{current_game.gid[:month].to_s}-#{current_game.gid[:year].to_s}'")
+				current_game_date < od ? partofseason='spring' : partofseason='reg' 
+				client=Teamseason.db_connect
+				puts "--UPDATE games SET partofseason='#{partofseason}' WHERE gid='#{current_game.gid_string}'";
+				client.query("UPDATE games SET partofseason='#{partofseason}' WHERE gid='#{current_game.gid_string}';")
+				client.query("UPDATE games SET partofseason='rain' WHERE home_team_score=away_team_score;")
+				rescue
+				puts "url error"
+				end 
 		end  
 	end
 
@@ -150,5 +159,23 @@ class Teamseason
 			myteam.save_game_info
 		end 
 	end 
-	 
+
+	def self.openingDay(year=2018) 
+		output={}
+		Teamseason.teamList.each do |team|
+			output[team]=Date.parse('29-03-2018')
+			#set up later to work for other years
+		end 	 
+		output
+	end 
+
+	def self.db_connect
+				client = Mysql2::Client.new(:host => "localhost", 
+					:username => "baseball", 
+					:password => "baseballrocks", 
+					:db => "baseball_data")
+				client
+	end 
+
+
 end 
