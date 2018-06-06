@@ -94,6 +94,7 @@ class Matchup
 		value_hash={:gid=>current_game.gid_string, :home_team_name=>current_game.gid[:homet], :away_team_name=>current_game.gid[:awayt]}
 		value_hash[:home_ml]=odds[:ml_home].to_i
 		value_hash[:away_ml]=odds[:ml_away].to_i
+		value_hash[:gdate]=current_game.gid[:year].to_s+"-"+current_game.gid[:month].to_s.date_with_zero+"-"+current_game.gid[:day].to_s.date_with_zero
 		variables=[]
 		values=[]
 		value_hash.each do |k,v|
@@ -103,7 +104,7 @@ class Matchup
 		client.query("test".insert_syntax('matchups', values, variables))
 	end 
 
-	def wl_odds
+	def wl_odds_ml(hometeam_win_pct=nil, awayteam_win_pct=nil)
 
 		current_game=Game.new
 		current_game_hash=current_game.parsegamestring(self.gid) 
@@ -111,15 +112,42 @@ class Matchup
 
 		hometeam=Teamseason.new
 		hometeam.year=2018; hometeam.team=current_game_hash[:homet]
-		hometeam_win_pct=hometeam.win_pct
+		hometeam_win_pct=hometeam.win_pct if hometeam_win_pct.nil? 
+		hometeam_loss_pct=1-hometeam.win_pct
+	
+		awayteam=Teamseason.new 
+		awayteam.year=2018; awayteam.team=current_game_hash[:awayt]
+		awayteam_win_pct=awayteam.win_pct if awayteam_win_pct.nil?
+		awayteam_loss_pct=1-awayteam.win_pct
+
+		hometeam_matchup_win_probability = hometeam_win_pct*awayteam_loss_pct/(1-(hometeam_win_pct*awayteam_win_pct+hometeam_loss_pct*awayteam_loss_pct))
+		awayteam_matchup_win_probability = awayteam_win_pct*hometeam_loss_pct/(1-(awayteam_win_pct*hometeam_win_pct+awayteam_loss_pct*hometeam_loss_pct))
+		
+		if hometeam_matchup_win_probability>=0.5 then 
+			hometeam_ml_based_on_wl_record=100.to_f*hometeam_matchup_win_probability/(1.to_f-hometeam_matchup_win_probability)
+			awayteam_ml_based_on_wl_record=-1*100.to_f*(1.to_f-awayteam_matchup_win_probability)/awayteam_matchup_win_probability
+		else 
+			awayteam_ml_based_on_wl_record=100.to_f*awayteam_matchup_win_probability/(1.to_f-awayteam_matchup_win_probability)
+			hometeam_ml_based_on_wl_record=-1*100.to_f*(1.to_f-hometeam_matchup_win_probability)/hometeam_matchup_win_probability
+		end 		
+		
+		result={:hometeam_ml_based_on_wl_record => hometeam_ml_based_on_wl_record, :awayteam_ml_based_on_wl_record => awayteam_ml_based_on_wl_record}
+		return result
+
+	end 
+
+	def pythag_wl_odds_ml
+		current_game=Game.new
+		current_game_hash=current_game.parsegamestring(self.gid) 
+
+		hometeam=Teamseason.new
+		hometeam.year=2018; hometeam.team=current_game_hash[:homet]
 
 		awayteam=Teamseason.new 
 		awayteam.year=2018; awayteam.team=current_game_hash[:awayt]
-		awayteam_win_pct=awayteam.win_pct
-		
-		puts "--#{hometeam_win_pct} and #{awayteam_win_pct}--"
-		
 
+		self.wl_odds_ml(hometeam.pythag, awayteam.pythag) 	
+		
 	end 
 
 	def self.teamList

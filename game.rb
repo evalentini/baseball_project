@@ -47,6 +47,10 @@ class Game
 		ht=doc.xpath("//linescore").attribute("home_team_runs").value	
 		score[:at_runs]=at
 		score[:ht_runs]=ht
+		#check if rained out 
+		score[:partofseason]='reg'
+		maxinning=1
+		doc.xpath('//inning_line_score').each {|inning| maxinning=inning.attribute('inning').value.to_i if inning.attribute('inning').value.to_i>maxinning} 
 		score
 	
 	end  
@@ -56,34 +60,77 @@ class Game
 		#connect to db
 		client = self.db_connect
 
+		#get url for innings 
+		inning_file_url=self.game_url.sub('boxscore.xml', 'inning/inning_all.xml')
+		puts inning_file_url		
+		inning_file=Nokogiri::HTML(open(inning_file_url))
+		game_file=Nokogiri::HTML(open(self.game_url))
+		outcomes={}
+		inning_file.xpath('//atbat').each do |atbat|
+			if outcomes[atbat.attribute('batter').value].nil?
+				outcomes[atbat.attribute('batter').value]=[]
+				outcomes[atbat.attribute('batter').value][0]=atbat.attribute('event').value	
+			else 
+				outcomes[atbat.attribute('batter').value].push(atbat.attribute('event').value) 
+			end 
+		end 	
+		outcomes.each do |hitter_id,events|
+			
+			#delete all of players at bats from given game 
+			deletesyntax="DELETE FROM plateappearances WHERE gid='#{self.gid_string}' AND "
+			deletesyntax+="hitter_id=#{hitter_id};"
+			client.query(deletesyntax)
+			
+			#add at bat detail
+			ab_counter=0 
+			events.each do |outcome|
+				ab_counter+=1
+				pa_variables=["gid", "hitter_id", "hitter_name", "game_ab", "event", "team", "gdate"]
+				#get hitters name 
+				hitter_name=game_file.xpath("//batter[@id=\"#{hitter_id}\"]").first.attribute('name_display_first_last').value
+				#get batters team 
+				home_or_away=game_file.xpath("//batter[@id=\"#{hitter_id}\"]").first.ancestors.first.attribute('team_flag').value
+				home_or_away=="away" ? player_team=self.gid[:awayt] : player_team=self.gid[:homet]
+				puts "player plays for #{home_or_away}-----"
+				gdate=self.gid[:year].to_s.date_with_zero+"-"+self.gid[:month].to_s.date_with_zero+"-"+self.gid[:day].to_s.date_with_zero
+				pa_values=[self.gid_string, hitter_id, hitter_name, ab_counter, outcome, player_team, gdate]
+	
+				client.query("test".insert_syntax('plateappearances', pa_values, pa_variables))
+				
+			end 
+
+			
+		end 
+		#check if link is to one of the inning files 
+
 		#add plate appearance information 
 		#get url for hitters 
-		hitter_folder_url=self.game_url.sub('boxscore.xml', 'batters')
-		hitter_list=Nokogiri::HTML(open(hitter_folder_url))
-		hitter_list.xpath("//a").each do |hitter|
+		#hitter_folder_url=self.game_url.sub('boxscore.xml', 'batters')
+		#hitter_list=Nokogiri::HTML(open(hitter_folder_url))
+		#hitter_list.xpath("//a").each do |hitter|
 			
-			if hitter.attribute('href').value =~ /batters\/[0-9]+\.xml/
-				hitter_pa_url=self.game_url.sub('boxscore.xml', hitter.attribute('href').value)	
-				#pull PA data for hitter
-				pa_data=Nokogiri::HTML(open(hitter_pa_url))
-				#delete all records for given player and given game 
-				player_tag = pa_data.xpath('//player')
-				player_team=player_tag.attribute('team').value
-				hitter_id=player_tag.attribute('id').value
-				hitter_name=player_tag.attribute('first_name').value+" "+player_tag.attribute('last_name').value
-				deletesyntax="DELETE FROM plateappearances WHERE gid='#{self.gid_string}' AND "
-				deletesyntax+="hitter_id=#{pa_data.xpath('//player').attribute('id').value};"
-				client.query(deletesyntax)
-				ab_counter=0
-				pa_data.xpath('//ab').each do |ab|
-					ab_counter+=1
-					pa_variables=["gid", "hitter_id", "hitter_name", "game_ab", "inning", "event", "team"]
-					pa_values=[self.gid_string, hitter_id, hitter_name, ab_counter, ab.attribute('inning').value, ab.attribute('event').value, player_team]								
-					client.query("test".insert_syntax('plateappearances', pa_values, pa_variables))		
-					puts "test".insert_syntax('plateappearances', pa_values, pa_variables)
-				end 
-			end 
-		end 
+		#	if hitter.attribute('href').value =~ /batters\/[0-9]+\.xml/
+		#		hitter_pa_url=self.game_url.sub('boxscore.xml', hitter.attribute('href').value)	
+		#		#pull PA data for hitter
+		#		pa_data=Nokogiri::HTML(open(hitter_pa_url))
+		#		#delete all records for given player and given game 
+		#		player_tag = pa_data.xpath('//player')
+		#		player_team=player_tag.attribute('team').value
+		#		hitter_id=player_tag.attribute('id').value
+		#		hitter_name=player_tag.attribute('first_name').value+" "+player_tag.attribute('last_name').value
+		#		deletesyntax="DELETE FROM plateappearances WHERE gid='#{self.gid_string}' AND "
+		#		deletesyntax+="hitter_id=#{pa_data.xpath('//player').attribute('id').value};"
+		#		client.query(deletesyntax)
+		#		ab_counter=0
+		#		pa_data.xpath('//ab').each do |ab|
+		#			ab_counter+=1
+		#			pa_variables=["gid", "hitter_id", "hitter_name", "game_ab", "inning", "event", "team"]
+		#			pa_values=[self.gid_string, hitter_id, hitter_name, ab_counter, ab.attribute('inning').value, ab.attribute('event').value, player_team]								
+		#			client.query("test".insert_syntax('plateappearances', pa_values, pa_variables))		
+		#			puts "test".insert_syntax('plateappearances', pa_values, pa_variables)
+		#		end 
+		#	end 
+		#end 
 	end 
 
 	def add_game_score 
@@ -95,11 +142,13 @@ class Game
 
 		#add game to db
 
-		variable_names=["gid", "home_team_name", "away_team_name", "home_team_score", "away_team_score", "gdate"]
+		variable_names=["gid", "home_team_name", "away_team_name", "home_team_score", "away_team_score", "gdate", "partofseason"]
 		score=self.game_score 
 		gdate=self.gid[:year].to_s+"-"+self.gid[:month].to_s.date_with_zero+"-"+self.gid[:day].to_s.date_with_zero
-		values=[self.gid_string, self.gid[:homet], self.gid[:awayt], score[:ht_runs], score[:at_runs], gdate]
+		values=[self.gid_string, self.gid[:homet], self.gid[:awayt], score[:ht_runs], score[:at_runs], gdate, partofseason]
 		client.query("test".insert_syntax('games', values, variable_names))
+		#check if game was rained out 
+		
 		
 	end 	
 
