@@ -3,6 +3,8 @@ load 'string.rb'
 load 'game.rb'
 load 'hitter.rb'
 load 'matchup.rb'
+load 'float.rb'
+load 'newsletter.rb'
 require 'open-uri'
 require 'nokogiri'
 require 'mysql2'
@@ -201,6 +203,169 @@ class Teamseason
 	
 	def closingDay 
 		Date.parse('02-10-'+self.year.to_s)
+	end 
+
+	def hitter_plate_appearances (hitter_id) 
+			syntax="SELECT COUNT(*) as pa_count FROM plateappearances WHERE partofseason='reg' AND team='#{self.team}' AND year(gdate)=#{self.year} AND hitter_id=#{hitter_id}"
+			client=Teamseason.db_connect			
+			client.query(syntax).first["pa_count"]
+	end 
+
+		def plate_appearances 
+			syntax="SELECT COUNT(*) as pa_count FROM plateappearances WHERE partofseason='reg' AND team='#{self.team}' AND year(gdate)=#{self.year}"
+			client=Teamseason.db_connect			
+			client.query(syntax).first["pa_count"]
+	end 
+
+	def hitter_hits(hitter_id)
+		syntax="SELECT COUNT(*) as hits FROM plateappearances WHERE partofseason='reg' AND team='#{self.team}' AND year(gdate)=#{self.year} AND hitter_id=#{hitter_id} "
+		syntax+="AND (event='Single' or event='Double' or event='Triple' or event='Home Run')"
+		client=Teamseason.db_connect			
+		client.query(syntax).first["hits"]
+	end 
+
+	def hits
+		syntax="SELECT COUNT(*) as hits FROM plateappearances WHERE partofseason='reg' AND team='#{self.team}' AND year(gdate)=#{self.year} "
+		syntax+="AND (event='Single' or event='Double' or event='Triple' or event='Home Run')"
+		client=Teamseason.db_connect			
+		client.query(syntax).first["hits"]
+	end 
+
+
+	def hitter_singles(hitter_id)
+		syntax="SELECT COUNT(*) as singles FROM plateappearances WHERE partofseason='reg' AND team='#{self.team}' AND year(gdate)=#{self.year} AND hitter_id=#{hitter_id} "
+		syntax+="AND (event='Single')"
+		client=Teamseason.db_connect			
+		client.query(syntax).first["singles"]
+	end 
+
+	def singles
+		syntax="SELECT COUNT(*) as singles FROM plateappearances WHERE partofseason='reg' AND team='#{self.team}' AND year(gdate)=#{self.year} "
+		syntax+="AND (event='Single')"
+		client=Teamseason.db_connect			
+		client.query(syntax).first["singles"]
+	end 
+
+	def hitter_doubles(hitter_id)
+		syntax="SELECT COUNT(*) as doubles FROM plateappearances WHERE partofseason='reg' AND team='#{self.team}' AND year(gdate)=#{self.year} AND hitter_id=#{hitter_id} "
+		syntax+="AND event='Double'"
+		client=Teamseason.db_connect			
+		client.query(syntax).first["doubles"]
+	end 
+
+	def doubles
+		syntax="SELECT COUNT(*) as doubles FROM plateappearances WHERE partofseason='reg' AND team='#{self.team}' AND year(gdate)=#{self.year} "
+		syntax+="AND event='Double'"
+		client=Teamseason.db_connect			
+		client.query(syntax).first["doubles"]
+	end 
+
+
+	def hitter_triples(hitter_id)
+		syntax="SELECT COUNT(*) as triples FROM plateappearances WHERE partofseason='reg' AND team='#{self.team}' AND year(gdate)=#{self.year} AND hitter_id=#{hitter_id} "
+		syntax+="AND event='Triple'"
+		client=Teamseason.db_connect			
+		client.query(syntax).first["triples"]
+	end 
+
+	def triples
+		syntax="SELECT COUNT(*) as triples FROM plateappearances WHERE partofseason='reg' AND team='#{self.team}' AND year(gdate)=#{self.year} "
+		syntax+="AND event='Triple'"
+		client=Teamseason.db_connect			
+		client.query(syntax).first["triples"]
+	end 
+
+
+	def hitter_home_runs(hitter_id)
+		syntax="SELECT COUNT(*) as hr FROM plateappearances WHERE partofseason='reg' AND team='#{self.team}' AND year(gdate)=#{self.year} AND hitter_id=#{hitter_id} "
+		syntax+="AND event='Home Run'"
+		client=Teamseason.db_connect			
+		client.query(syntax).first["hr"]
+	end 
+
+	def home_runs
+		syntax="SELECT COUNT(*) as hr FROM plateappearances WHERE partofseason='reg' AND team='#{self.team}' AND year(gdate)=#{self.year} "
+		syntax+="AND event='Home Run'"
+		client=Teamseason.db_connect			
+		client.query(syntax).first["hr"]
+	end 
+
+	def hitter_walks(hitter_id)
+		syntax="SELECT COUNT(*) as walks FROM plateappearances WHERE partofseason='reg' AND team='#{self.team}' AND year(gdate)=#{self.year} AND hitter_id=#{hitter_id} "
+		syntax+="AND (event='Walk' OR event='Intent Walk')"
+		client=Teamseason.db_connect			
+		client.query(syntax).first["walks"]
+	end 
+
+	def walks
+		syntax="SELECT COUNT(*) as walks FROM plateappearances WHERE partofseason='reg' AND team='#{self.team}' AND year(gdate)=#{self.year} "
+		syntax+="AND (event='Walk' OR event='Intent Walk')"
+		client=Teamseason.db_connect			
+		client.query(syntax).first["walks"]
+	end 
+
+	def hitter_hbp(hitter_id)
+				syntax="SELECT COUNT(*) as hbp FROM plateappearances WHERE partofseason='reg' AND team='#{self.team}' AND year(gdate)=#{self.year} AND hitter_id=#{hitter_id} "
+		syntax+="AND (event='Hit By Pitch')"
+		client=Teamseason.db_connect			
+		client.query(syntax).first["hbp"]
+	end 
+
+	def hbp
+				syntax="SELECT COUNT(*) as hbp FROM plateappearances WHERE partofseason='reg' AND team='#{self.team}' AND year(gdate)=#{self.year} "
+		syntax+="AND (event='Hit By Pitch')"
+		client=Teamseason.db_connect			
+		client.query(syntax).first["hbp"]
+	end 
+
+	def hitter_at_bats(hitter_id)
+		result={}
+		totalouts=0
+		out_plays=['Bunt Groundout', 'Bunt Lineout', 'Bunt Pop Out', 'Double Play', 'Field Error', 'Fielders Choice', 'Fielders Choice Out', 'Flyout', 'Forceout', 'Grounded Into DP', 'Groundout', 'Lineout', 'Pop Out', 'Strikeout', 'Strikeout - DP', 'Triple Play']
+		client=Teamseason.db_connect
+		out_plays.each do |play|
+			syntax="SELECT COUNT(*) as outplays FROM plateappearances WHERE partofseason='reg' AND team='#{self.team}' AND year(gdate)=#{self.year} AND hitter_id=#{hitter_id} "
+			syntax+="AND (event='#{play}')"
+			result[play]=client.query(syntax).first["outplays"]
+			totalouts+=result[play].to_i
+		end 
+		totalouts+hitter_hits(hitter_id)
+	end 
+
+	def at_bats
+		result={}
+		totalouts=0
+		out_plays=['Bunt Groundout', 'Bunt Lineout', 'Bunt Pop Out', 'Double Play', 'Field Error', 'Fielders Choice', 'Fielders Choice Out', 'Flyout', 'Forceout', 'Grounded Into DP', 'Groundout', 'Lineout', 'Pop Out', 'Strikeout', 'Strikeout - DP', 'Triple Play']
+		client=Teamseason.db_connect
+		out_plays.each do |play|
+			syntax="SELECT COUNT(*) as outplays FROM plateappearances WHERE partofseason='reg' AND team='#{self.team}' AND year(gdate)=#{self.year} "
+			syntax+="AND (event='#{play}')"
+			result[play]=client.query(syntax).first["outplays"]
+			totalouts+=result[play].to_i
+		end 
+		totalouts+self.hits
+	end 
+
+
+	def hitter_batting_average(hitter_id) 
+		self.hitter_hits(hitter_id).to_f/self.hitter_at_bats(hitter_id)
+	end 
+
+	def batting_average 
+		self.hits.to_f/self.at_bats.to_f
+	end 
+
+	def hitter_obp(hitter_id)
+		numerator=self.hitter_hits(hitter_id).to_f+self.hitter_walks(hitter_id).to_f+self.hitter_hbp(hitter_id).to_f
+		denominator=self.hitter_at_bats(hitter_id).to_f+self.hitter_walks(hitter_id).to_f+self.hitter_hbp(hitter_id).to_f
+		numerator/denominator
+	end 
+
+	def hitter_slg(hid)
+		numerator=self.hitter_singles(hid)+self.hitter_doubles(hid)*2+self.hitter_triples(hid)*3+self.hitter_home_runs(hid)*4
+		denominator=self.hitter_at_bats(hid).to_f
+		numberator=numerator.to_f
+		numerator/denominator
 	end 
 
 	def self.db_connect

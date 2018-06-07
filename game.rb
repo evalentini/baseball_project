@@ -51,6 +51,8 @@ class Game
 		score[:partofseason]='reg'
 		maxinning=1
 		doc.xpath('//inning_line_score').each {|inning| maxinning=inning.attribute('inning').value.to_i if inning.attribute('inning').value.to_i>maxinning} 
+		puts "---------#{maxinning}-----"		
+		score[:partofseason]='rain' if maxinning<5		
 		score
 	
 	end  
@@ -66,12 +68,16 @@ class Game
 		inning_file=Nokogiri::HTML(open(inning_file_url))
 		game_file=Nokogiri::HTML(open(self.game_url))
 		outcomes={}
+		pitchers={}
 		inning_file.xpath('//atbat').each do |atbat|
 			if outcomes[atbat.attribute('batter').value].nil?
 				outcomes[atbat.attribute('batter').value]=[]
+				pitchers[atbat.attribute('batter').value]=[]
 				outcomes[atbat.attribute('batter').value][0]=atbat.attribute('event').value	
+				pitchers[atbat.attribute('batter').value][0]=atbat.attribute('pitcher').value
 			else 
-				outcomes[atbat.attribute('batter').value].push(atbat.attribute('event').value) 
+				outcomes[atbat.attribute('batter').value].push(atbat.attribute('event').value)
+				pitchers[atbat.attribute('batter').value].push(atbat.attribute('pitcher').value) 
 			end 
 		end 	
 		outcomes.each do |hitter_id,events|
@@ -85,15 +91,17 @@ class Game
 			ab_counter=0 
 			events.each do |outcome|
 				ab_counter+=1
-				pa_variables=["gid", "hitter_id", "hitter_name", "game_ab", "event", "team", "gdate"]
+				pa_variables=["gid", "hitter_id", "hitter_name", "game_ab", "event", "team", "gdate", "partofseason", "pitcher_id"]
 				#get hitters name 
 				hitter_name=game_file.xpath("//batter[@id=\"#{hitter_id}\"]").first.attribute('name_display_first_last').value
+				#get picther id 
+				pitcher_id=pitchers[hitter_id][ab_counter-1]
 				#get batters team 
 				home_or_away=game_file.xpath("//batter[@id=\"#{hitter_id}\"]").first.ancestors.first.attribute('team_flag').value
 				home_or_away=="away" ? player_team=self.gid[:awayt] : player_team=self.gid[:homet]
-				puts "player plays for #{home_or_away}-----"
+				pos=client.query("SELECT partofseason as partofseason from games where gid='#{self.gid_string}'").first["partofseason"]
 				gdate=self.gid[:year].to_s.date_with_zero+"-"+self.gid[:month].to_s.date_with_zero+"-"+self.gid[:day].to_s.date_with_zero
-				pa_values=[self.gid_string, hitter_id, hitter_name, ab_counter, outcome, player_team, gdate]
+				pa_values=[self.gid_string, hitter_id, hitter_name, ab_counter, outcome, player_team, gdate, pos, pitcher_id]
 	
 				client.query("test".insert_syntax('plateappearances', pa_values, pa_variables))
 				
@@ -145,9 +153,8 @@ class Game
 		variable_names=["gid", "home_team_name", "away_team_name", "home_team_score", "away_team_score", "gdate", "partofseason"]
 		score=self.game_score 
 		gdate=self.gid[:year].to_s+"-"+self.gid[:month].to_s.date_with_zero+"-"+self.gid[:day].to_s.date_with_zero
-		values=[self.gid_string, self.gid[:homet], self.gid[:awayt], score[:ht_runs], score[:at_runs], gdate, partofseason]
+		values=[self.gid_string, self.gid[:homet], self.gid[:awayt], score[:ht_runs], score[:at_runs], gdate, score[:partofseason]]
 		client.query("test".insert_syntax('games', values, variable_names))
-		#check if game was rained out 
 		
 		
 	end 	

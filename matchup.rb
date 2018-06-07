@@ -14,6 +14,19 @@ class Matchup
 		end 
 		result
 	end
+	
+	def self.pullMatchups(gamedate=Time.now)
+		#check if odds for todays matchups have already been pulled 
+		client=Matchup.db_connect
+		gdate_str=gamedate.strftime('%Y-%m-%d')
+		puts "SELECT COUNT(*) as ct FROM matchups WHERE gdate='"+gdate_str+"'"		
+		if client.query("SELECT COUNT(*) as ct FROM matchups WHERE gdate='"+gdate_str+"'").first["ct"]==0
+			Matchup.getMatchups(gamedate)
+		end
+		#pull matchups
+		return client.query("SELECT * FROM matchups WHERE gdate='"+gdate_str+"'")
+		
+	end 
 
 	def self.getMatchups(gamedate=Time.now)
 		gamedate_string=gamedate.month.to_s.date_with_zero+"-"+gamedate.day.to_s.date_with_zero+"-"+gamedate.year.to_s.gsub('20','').to_i.to_s.date_with_zero
@@ -120,19 +133,16 @@ class Matchup
 		awayteam_win_pct=awayteam.win_pct if awayteam_win_pct.nil?
 		awayteam_loss_pct=1-awayteam.win_pct
 
-		hometeam_matchup_win_probability = hometeam_win_pct*awayteam_loss_pct/(1-(hometeam_win_pct*awayteam_win_pct+hometeam_loss_pct*awayteam_loss_pct))
-		awayteam_matchup_win_probability = awayteam_win_pct*hometeam_loss_pct/(1-(awayteam_win_pct*hometeam_win_pct+awayteam_loss_pct*hometeam_loss_pct))
+		#bill james log5 formula 
+		hometeam_matchup_win_probability = (hometeam_win_pct-hometeam_win_pct*awayteam_win_pct)/(hometeam_win_pct+awayteam_win_pct-2.to_f*hometeam_win_pct*awayteam_win_pct)
+		awayteam_matchup_win_probability = (1-hometeam_matchup_win_probability) 
+
+#		hometeam_matchup_win_probability = hometeam_win_pct*awayteam_loss_pct/(1-(hometeam_win_pct*awayteam_win_pct+hometeam_loss_pct*awayteam_loss_pct))
+#		awayteam_matchup_win_probability = awayteam_win_pct*hometeam_loss_pct/(1-(awayteam_win_pct*hometeam_win_pct+awayteam_loss_pct*hometeam_loss_pct))
+
 		
-		if hometeam_matchup_win_probability>=0.5 then 
-			hometeam_ml_based_on_wl_record=100.to_f*hometeam_matchup_win_probability/(1.to_f-hometeam_matchup_win_probability)
-			awayteam_ml_based_on_wl_record=-1*100.to_f*(1.to_f-awayteam_matchup_win_probability)/awayteam_matchup_win_probability
-		else 
-			awayteam_ml_based_on_wl_record=100.to_f*awayteam_matchup_win_probability/(1.to_f-awayteam_matchup_win_probability)
-			hometeam_ml_based_on_wl_record=-1*100.to_f*(1.to_f-hometeam_matchup_win_probability)/hometeam_matchup_win_probability
-		end 		
-		
-		result={:hometeam_ml_based_on_wl_record => hometeam_ml_based_on_wl_record, :awayteam_ml_based_on_wl_record => awayteam_ml_based_on_wl_record}
-		return result
+		return {:hometeam_ml_based_on_wl_record => hometeam_matchup_win_probability.odds_to_ml, 
+						:awayteam_ml_based_on_wl_record => awayteam_matchup_win_probability.odds_to_ml}
 
 	end 
 
@@ -145,11 +155,96 @@ class Matchup
 
 		awayteam=Teamseason.new 
 		awayteam.year=2018; awayteam.team=current_game_hash[:awayt]
+		
+		puts hometeam.pythag
+		puts awayteam.pythag
 
 		self.wl_odds_ml(hometeam.pythag, awayteam.pythag) 	
 		
 	end 
 
+	def pythag_odds_on_favorite(team=nil)
+		fav_team=Teamseason.new
+		fav_team.year=self.matchup_year
+		fav_team.team=self.favorite 
+		underdog_team=Teamseason.new
+		underdog_team.year=self.matchup_year
+		underdog_team.team=self.underdog
+		return fav_team.pythag.to_f.odds_against_opponent(underdog_team.pythag.to_f)
+	end 
+
+	def pythag_odds_on_underdog(team=nil)
+		fav_team=Teamseason.new
+		fav_team.year=self.matchup_year
+		fav_team.team=self.favorite 
+		underdog_team=Teamseason.new
+		underdog_team.year=self.matchup_year
+		underdog_team.team=self.underdog	
+		return underdog_team.pythag.to_f.odds_against_opponent(fav_team.pythag.to_f)
+	end 
+
+#	def recommended_bet
+#		if self.odds_on_favorite<self.pythag_odds_on_favorite then 
+#			return favorite
+#		elsif self.odds_on_underdog<self.pythag_odds_on_underdog then 
+#			return underdog
+#		else
+#			return "no bet" 
+#		end
+#	end 
+	
+
+#	def pythag_odds_on_favorite_formatted(team=nil)
+#		return (self.pythag_odds_on_favorite(team)*100.to_f).round(1).to_s+"%"
+#	end 
+
+	def matchup_year
+		mygame=Game.new 
+		return mygame.parsegamestring(self.gid)[:year].to_i
+	end 
+
+	def favorite
+		client=Matchup.db_connect
+		#pull money line from database 
+		matchup=client.query("SELECT * FROM matchups WHERE gid='"+self.gid+"'").first
+		if matchup['home_ml'].to_i<matchup['away_ml'].to_i then
+			return matchup['home_team_name'] 
+		else 
+			return matchup['away_team_name'] 
+		end
+	end 
+
+	def underdog
+		client=Matchup.db_connect
+		#pull money line from database 
+		matchup=client.query("SELECT * FROM matchups WHERE gid='"+self.gid+"'").first
+		if matchup['home_ml'].to_i<matchup['away_ml'].to_i then
+			return matchup['away_team_name'] 
+		else 
+			return matchup['home_team_name'] 
+		end
+	end 
+
+	def odds_on_favorite
+		client=Matchup.db_connect
+		matchup=client.query("SELECT * FROM matchups WHERE gid='"+self.gid+"'").first
+		return [matchup['home_ml'],matchup['away_ml']].min.to_f.ml_to_odds
+	end 
+
+	def odds_on_favorite_formatted
+		(self.odds_on_favorite*100.to_f).round(1).to_s+"%"	
+	end 
+
+	def odds_on_underdog
+		client=Matchup.db_connect
+		matchup=client.query("SELECT * FROM matchups WHERE gid='"+self.gid+"'").first
+		return [matchup['home_ml'],matchup['away_ml']].max.to_f.ml_to_odds
+	end 
+
+	def odds_on_underdog_formatted
+		(self.odds_on_underdog*100.to_f).round(1).to_s+"%"	
+	end 
+	
 	def self.teamList
 		tl={}
 			tl["L.A. Angels"]="ana"
