@@ -1,3 +1,7 @@
+
+#connect to the database 
+$globalClient=DbConnection.startConnection
+
 class Matchup 
 	attr_accessor :homet, :awayt, :moneyline, :gid
 	def ml_to_odds
@@ -17,7 +21,7 @@ class Matchup
 	
 	def self.pullMatchups(gamedate=Time.now)
 		#check if odds for todays matchups have already been pulled 
-		client=Matchup.db_connect
+		client=$globalClient
 		gdate_str=gamedate.strftime('%Y-%m-%d')
 		puts "SELECT COUNT(*) as ct FROM matchups WHERE gdate='"+gdate_str+"'"		
 		if client.query("SELECT COUNT(*) as ct FROM matchups WHERE gdate='"+gdate_str+"'").first["ct"]==0
@@ -101,7 +105,7 @@ class Matchup
 	end 
 
 	def add_matchup(current_game, odds)
-		client=Matchup.db_connect		
+		client=$globalClient
 		delete_syntax="DELETE FROM matchups WHERE gid='#{current_game.gid_string}';"
 		client.query(delete_syntax)
 		value_hash={:gid=>current_game.gid_string, :home_team_name=>current_game.gid[:homet], :away_team_name=>current_game.gid[:awayt]}
@@ -163,6 +167,7 @@ class Matchup
 		
 	end 
 
+	#estimated win probability based on season to date run differential 
 	def pythag_odds_on_favorite(team=nil)
 		fav_team=Teamseason.new
 		fav_team.year=self.matchup_year
@@ -183,20 +188,67 @@ class Matchup
 		return underdog_team.pythag.to_f.odds_against_opponent(fav_team.pythag.to_f)
 	end 
 
-#	def recommended_bet
-#		if self.odds_on_favorite<self.pythag_odds_on_favorite then 
-#			return favorite
-#		elsif self.odds_on_underdog<self.pythag_odds_on_underdog then 
-#			return underdog
-#		else
-#			return "no bet" 
-#		end
-#	end 
-	
+	#estimated win probability based on baseball prospectus remaining record expectation 
+	def bp_odds_on_favorite
+		fav_team=Teamseason.new
+		fav_team.year=self.matchup_year
+		fav_team.team=self.favorite 
+		underdog_team=Teamseason.new
+		underdog_team.year=self.matchup_year
+		underdog_team.team=self.underdog
+		return fav_team.bp_ros_win_pct.to_f.odds_against_opponent(underdog_team.bp_ros_win_pct.to_f)
+	end
 
-#	def pythag_odds_on_favorite_formatted(team=nil)
-#		return (self.pythag_odds_on_favorite(team)*100.to_f).round(1).to_s+"%"
-#	end 
+	#pull odds from fangraphs live scoreboard 
+	def fangraphs_odds
+		matchupgame=Game.new
+		gamedate=matchupgame.parsegamestring(self.gid)[:year].to_s+"-"+matchupgame.parsegamestring(self.gid)[:month].to_s+"-"+matchupgame.parsegamestring(self.gid)[:day].to_s
+		url="https://www.fangraphs.com/livescoreboard.aspx?date="+gamedate
+		doc=Nokogiri::HTML(open(url))
+		
+		awayt=matchupgame.parsegamestring(self.gid)[:awayt]
+		homet=Matchup.fangraphTeamList[matchupgame.parsegamestring(self.gid)[:homet]]
+		puts awayt.to_s
+	end 
+	 
+ 
+	def recommended_bet_formatted
+		if self.odds_on_favorite<self.pythag_odds_on_favorite then 
+			return favorite
+		elsif self.odds_on_underdog<self.pythag_odds_on_underdog then 
+			return underdog
+		else
+			return "no bet" 
+		end
+	end 
+
+	def favorite_fair_ml
+		return self.pythag_odds_on_favorite.odds_to_ml.round(0).to_s	
+	end 
+
+	def underdog_fair_ml
+		return self.pythag_odds_on_underdog.odds_to_ml.round(0).to_s
+	end 
+
+	def expected_winnings
+		if self.odds_on_favorite<self.pythag_odds_on_favorite then 
+			#expected value = (100)*pythag_odds_on_favorite - (100/ml)*odds_on_underdog
+			return -1.to_f*(10000.to_f/self.ml_on_favorite)*self.pythag_odds_on_favorite + -100.to_f*self.pythag_odds_on_underdog
+		elsif self.odds_on_underdog<self.pythag_odds_on_underdog then 
+			 #expected value = (moneyline)*pythag_odds_on_underdog - 100*odds_on_favorite
+			return self.ml_on_underdog*self.pythag_odds_on_underdog + -100.to_f*self.pythag_odds_on_favorite
+		else
+			return 0 
+		end
+	end 
+
+	def expected_winnings_formatted
+		"$"+self.expected_winnings.round(2).to_s
+	end 
+
+	def pythag_odds_on_favorite_formatted(team=nil)
+		return (self.pythag_odds_on_favorite(team)*100.to_f).round(1).to_s+"%"
+	end 
 
 	def matchup_year
 		mygame=Game.new 
@@ -204,7 +256,7 @@ class Matchup
 	end 
 
 	def favorite
-		client=Matchup.db_connect
+		client=$globalClient
 		#pull money line from database 
 		matchup=client.query("SELECT * FROM matchups WHERE gid='"+self.gid+"'").first
 		if matchup['home_ml'].to_i<matchup['away_ml'].to_i then
@@ -215,7 +267,7 @@ class Matchup
 	end 
 
 	def underdog
-		client=Matchup.db_connect
+		client=$globalClient
 		#pull money line from database 
 		matchup=client.query("SELECT * FROM matchups WHERE gid='"+self.gid+"'").first
 		if matchup['home_ml'].to_i<matchup['away_ml'].to_i then
@@ -225,8 +277,20 @@ class Matchup
 		end
 	end 
 
+	def ml_on_favorite
+		client=$globalClient
+		matchup=client.query("SELECT * FROM matchups WHERE gid='"+self.gid+"'").first
+		return [matchup['home_ml'],matchup['away_ml']].min.to_f
+	end 
+	
+	def ml_on_underdog
+		client=$globalClient
+		matchup=client.query("SELECT * FROM matchups WHERE gid='"+self.gid+"'").first
+		return [matchup['home_ml'],matchup['away_ml']].max.to_f
+	end 
+
 	def odds_on_favorite
-		client=Matchup.db_connect
+		client=$globalClient
 		matchup=client.query("SELECT * FROM matchups WHERE gid='"+self.gid+"'").first
 		return [matchup['home_ml'],matchup['away_ml']].min.to_f.ml_to_odds
 	end 
@@ -236,7 +300,7 @@ class Matchup
 	end 
 
 	def odds_on_underdog
-		client=Matchup.db_connect
+		client=$globalClient
 		matchup=client.query("SELECT * FROM matchups WHERE gid='"+self.gid+"'").first
 		return [matchup['home_ml'],matchup['away_ml']].max.to_f.ml_to_odds
 	end 
@@ -244,7 +308,13 @@ class Matchup
 	def odds_on_underdog_formatted
 		(self.odds_on_underdog*100.to_f).round(1).to_s+"%"	
 	end 
-	
+
+	def self.fangraphTeamList
+		tl={}
+		tl['hou']="Astros"
+		tl['tex']="Rangers"
+	end 	
+
 	def self.teamList
 		tl={}
 			tl["L.A. Angels"]="ana"
@@ -266,3 +336,5 @@ class Matchup
 		return tl
 	end 
 end 
+
+

@@ -60,7 +60,7 @@ class Game
 	def batting_lines
 
 		#connect to db
-		client = self.db_connect
+		client = $globalClient
 
 		#get url for innings 
 		inning_file_url=self.game_url.sub('boxscore.xml', 'inning/inning_all.xml')
@@ -143,7 +143,7 @@ class Game
 
 	def add_game_score 
 		#connect to db
-		client = self.db_connect
+		client = $globalClient
 
 		#delete game from db if exists 
 		client.query("DELETE FROM games WHERE gid='#{self.gid_string}';")

@@ -1,15 +1,18 @@
 
+load 'dbconnection.rb'
 load 'string.rb'
 load 'game.rb'
 load 'hitter.rb'
 load 'matchup.rb'
 load 'float.rb'
-load 'newsletter.rb'
+load 'petcoa.rb'
 require 'open-uri'
 require 'nokogiri'
 require 'mysql2'
 require 'nikkou'
 
+#connect to the database 
+$globalClient=DbConnection.startConnection
 
 #questions for phil: 
 #1.) How can I avoid putting the code to connect to the DB in all classes? 
@@ -51,7 +54,7 @@ class Teamseason
 	def save_game_info(keep_past_games=true)
 		startdate=Date.new(self.year, 01,01) 
 		if keep_past_games == true 
-			client=Teamseason.db_connect
+			client=$globalClient
 			puts "SELECT MAX(gdate) as maxdate FROM games WHERE (home_team_name='#{self.team}' OR away_team_name='#{self.team}') AND partofseason='reg' AND YEAR(gdate)=#{self.year};"
 			maxdate=client.query("SELECT MAX(gdate) as maxdate FROM games WHERE (home_team_name='#{self.team}' OR away_team_name='#{self.team}') AND partofseason='reg' AND YEAR(gdate)=#{self.year};")
 			puts maxdate.first["maxdate"].class			
@@ -73,7 +76,7 @@ class Teamseason
 				od=self.openingDay[self.team]
 				current_game_date = Date.parse("'#{current_game.gid[:day].to_s}-#{current_game.gid[:month].to_s}-#{current_game.gid[:year].to_s}'")
 				current_game_date < od ? partofseason='spring' : partofseason='reg' 
-				client=Teamseason.db_connect
+				client=$globalClient
 				puts "--UPDATE games SET partofseason='#{partofseason}' WHERE gid='#{current_game.gid_string}'";
 				client.query("UPDATE games SET partofseason='#{partofseason}' WHERE gid='#{current_game.gid_string}';")
 				client.query("UPDATE games SET partofseason='rain' WHERE home_team_score=away_team_score;")  
@@ -81,7 +84,7 @@ class Teamseason
 	end
 
 	def wins
-		client=self.db_connect
+		client=$globalClient
 		home_wins="SELECT COUNT(*) AS wins FROM games "
 		home_wins+="WHERE partofseason='reg' AND year(gdate)=#{self.year} AND home_team_name='#{self.team}' AND home_team_score>away_team_score;"
 		home_wins=client.query(home_wins).first["wins"]
@@ -102,7 +105,7 @@ class Teamseason
 	end 
 	
 	def games_played 
-		client=self.db_connect
+		client=$globalClient
 		games_played="SELECT COUNT(*) AS games_played FROM games "
 		games_played+="WHERE partofseason='reg' AND year(gdate)=#{self.year} AND (away_team_name='#{self.team}' OR home_team_name='#{self.team}')"
 		client.query(games_played).first["games_played"]
@@ -121,7 +124,7 @@ class Teamseason
 	end 
 
 	def runs_scored
-		client=self.db_connect 
+		client=$globalClient 
 		home_game_runs="SELECT SUM(home_team_score) AS runs FROM games "
 		home_game_runs+="WHERE partofseason='reg' AND year(gdate)=#{self.year} AND home_team_name='#{self.team}'"
 		home_game_runs=client.query(home_game_runs).first["runs"].to_i
@@ -134,7 +137,7 @@ class Teamseason
 	end 
 
 	def runs_allowed
-		client=self.db_connect 
+		client=$globalClient
 		home_game_runs="SELECT SUM(away_team_score) AS runs FROM games "
 		home_game_runs+="WHERE partofseason='reg' AND year(gdate)=#{self.year} AND home_team_name='#{self.team}'"
 		home_game_runs=client.query(home_game_runs).first["runs"].to_i
@@ -158,13 +161,13 @@ class Teamseason
 		self.wins.to_f/self.games_played.to_f
 	end 
 
-	def db_connect
-				client = Mysql2::Client.new(:host => "localhost", 
-					:username => "baseball", 
-					:password => "baseballrocks", 
-					:db => "baseball_data")
-				client
-	end 
+#	def db_connect
+#				client = Mysql2::Client.new(:host => "localhost", 
+#					:username => "baseball", 
+#					:password => "baseballrocks", 
+#					:db => "baseball_data")
+#				client
+#	end 
 
 	def self.teamList
 		["ana", "ari", "atl","bal","bos","chn","cin","cle","col","det",
@@ -172,13 +175,13 @@ class Teamseason
 		"sdn","sea","sfn","sln","tba","tex","tor","was"]
 	end 
 
-	def self.saveAllGames(year=2018) 
+	def self.saveAllGames(year=2018, update_only=true) 
 		self.teamList.each do |team|
 			puts "starting on team ---#{team}----"			
 			myteam=Teamseason.new
 			myteam.year=year 
 			myteam.team=team
-			myteam.save_game_info(false)
+			myteam.save_game_info(update_only)
 		end 
 	end 
 
@@ -368,12 +371,30 @@ class Teamseason
 		numerator/denominator
 	end 
 
+	def team_at_bats
+		client=$globalClient
+		syntax="SELECT COUNT(*) as pa, hitter_id, hitter_name FROM plateappearances " 
+		syntax+="WHERE team='"+self.team+"' AND partofseason='reg' AND year(gdate)="+self.year.to_s+" "
+		syntax+="GROUP BY hitter_id, hitter_name ORDER By pa DESC;"
+		result=client.query(syntax).first
+		result["hitter_name"].to_s+" with "+result["pa"].to_s+" plate appearances"
+	end 
+
 	def self.db_connect
 				client = Mysql2::Client.new(:host => "localhost", 
 					:username => "baseball", 
 					:password => "baseballrocks", 
 					:db => "baseball_data")
 				client
+	end 
+
+	def bp_ros_win_pct 
+		raise "not relevant for historical seasons" unless self.year==2018
+		url="https://legacy.baseballprospectus.com/fantasy/dc/index.php?tm="+self.team 
+		doc=Nokogiri::HTML(open(url))
+		wins = doc.xpath('//b').first.content.to_s.split("-")[0].to_i
+		losses = doc.xpath('//b').first.content.to_s.split("-")[1].to_i
+		return wins.to_f/(wins.to_f+losses.to_f)
 	end 
 
 end 
