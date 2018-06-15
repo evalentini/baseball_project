@@ -309,10 +309,49 @@ class Matchup
 		(self.odds_on_underdog*100.to_f).round(1).to_s+"%"	
 	end 
 
-	def self.fangraphTeamList
+	def self.fangraphWinProb
+		client=$globalClient
 		tl={}
 		tl['hou']="Astros"
 		tl['tex']="Rangers"
+		scoreboard_url ="https://www.fangraphs.com/livescoreboard.aspx?date="
+		scoreboard_url+=Time.now.strftime('%Y-%m-%d')
+		scoreboard=Nokogiri::HTML(open(scoreboard_url)) 
+		team_label_tag_style="vertical-align:top; border-right: 1px dotted black; border-bottom:1px dotted black; text-align:center; padding-top: 15px; padding-bottom:15px;"
+		win_prob_tag_style="border:1px solid black;"
+		mhash={}		
+		scoreboard.xpath('//td').each do |td|
+		 	unless td.attribute('style').nil?		
+				if td.attribute('style').value==team_label_tag_style				
+					teams= td.content[0,100][/(\w+ )*\w+ @ (\w+ )*\w+/]
+					gametime=td.content[0,100][/\d\d\:\d\d/].gsub(':','').to_i
+					probs = td.content[0,100][/\d\d\.\d .\d\d\.\d/].split("%") 
+					at_prob=probs[0].strip
+					ht_prob=probs[1].strip
+					away_team=Matchup.fgTeamList[teams.split('@')[0].strip]+"mlb"
+					home_team=Matchup.fgTeamList[teams.split('@')[1].strip]+"mlb"
+					mhash_key=away_team+"_"+home_team 
+					mhash[mhash_key]={} if mhash[mhash_key].nil? 
+					mhash[mhash_key][gametime]=[at_prob, ht_prob]
+					#create hash with details for 
+					#puts Matchup.fgTeamList[away_team] + "at " + Matchup.fgTeamList[home_team]
+					#extract home team, away team, game time and win probs 		
+				end 			
+			end 			
+		end 
+		mhash.each do |teams,vals|
+			gametimes=[]
+			vals.each do |gametime, odds|
+				gametimes.push(gametime)
+			end 
+			ordered_gametimes=gametimes.order_hash
+			vals.each do |gametime, odds|
+				gid_string="gid_"+Time.now.strftime('%Y_%m_%d')+"_"+teams+"_"+ordered_gametimes[gametime].to_s
+				sql_syntax="UPDATE matchups SET awprob=#{odds.first}, hwprob=#{odds.last} WHERE gid='#{gid_string}';"
+				puts sql_syntax				
+				client.query(sql_syntax)
+			end 
+		end 
 	end 	
 
 	def self.teamList
@@ -333,6 +372,41 @@ class Matchup
 			tl["Oakland"]="oak"; tl["Philadelphia"]="phi"; tl["Pittsburgh"]="pit"; tl["San Diego"]="sdn";
 			tl["Seattle"]="sea"; tl["San Francisco"]="sfn"; tl["St. Louis"]="sln";
 			tl["Tampa Bay"]="tba"; tl["Texas"]="tex"; tl["Toronto"]="tor"; tl["Washington"]="was" 		
+		return tl
+	end 
+
+	def self.fgTeamList
+		tl={}
+		tl['Angels']='ana'
+		tl['Diamondbacks']='ari'
+		tl['Braves']='atl'
+		tl['Orioles']='bal'
+		tl['Red Sox']='bos'
+		tl['White Sox']='cha'
+		tl['Cubs']='chn'
+		tl['Reds']='cin'
+		tl['Indians']='cle'
+		tl['Rockies']='col'
+		tl['Tigers']='det'
+		tl['Marlins']='mia'
+		tl['Astros']='hou'
+		tl['Royals']='kca'
+		tl['Dodgers']='lan'
+		tl['Brewers']='mil'
+		tl['Twins']='min'
+		tl['Yankees']='nya'
+		tl['Mets']='nyn'
+		tl['Athletics']='oak'
+		tl['Phillies']='phi'
+		tl['Pirates']='pit'
+		tl['Padres']='sdn'
+		tl['Mariners']='sea'
+		tl['Giants']='sfn'
+		tl['Cardinals']='sln'
+		tl['Rays']='tba'
+		tl['Rangers']='tex'
+		tl['Blue Jays']='tor'
+		tl['Nationals']='was'
 		return tl
 	end 
 end 
